@@ -13,10 +13,26 @@ type Picked = {
   yCss: number
 }
 
+function loadImage(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new window.Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      resolve(img)
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('image decode failed'))
+    }
+    img.src = url
+  })
+}
+
 export default function CaptureFlow() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const bitmapRef = useRef<ImageBitmap | null>(null)
+  const imageRef = useRef<HTMLImageElement | null>(null)
   const geoRef = useRef<{ latitude: number; longitude: number } | null>(null)
 
   const [hasPhoto, setHasPhoto] = useState(false)
@@ -46,21 +62,27 @@ export default function CaptureFlow() {
     setSaved(false)
     requestLocation()
 
-    const bitmap = await createImageBitmap(file)
-    bitmapRef.current = bitmap
+    try {
+      const img = await loadImage(file)
+      imageRef.current = img
 
-    const scale = Math.min(1, DISPLAY_MAX_SIDE / Math.max(bitmap.width, bitmap.height))
-    const w = Math.round(bitmap.width * scale)
-    const h = Math.round(bitmap.height * scale)
+      const scale = Math.min(1, DISPLAY_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight))
+      const w = Math.round(img.naturalWidth * scale)
+      const h = Math.round(img.naturalHeight * scale)
 
-    const canvas = canvasRef.current
-    if (!canvas) return
-    canvas.width = w
-    canvas.height = h
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.drawImage(bitmap, 0, 0, w, h)
-    setHasPhoto(true)
+      const canvas = canvasRef.current
+      if (!canvas) return
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.drawImage(img, 0, 0, w, h)
+      setHasPhoto(true)
+    } catch {
+      setError('写真の読み込みに失敗しました。もう一度お試しください。')
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
   }
 
   function onCanvasTap(e: React.MouseEvent<HTMLCanvasElement>) {
@@ -96,14 +118,14 @@ export default function CaptureFlow() {
   }
 
   async function onSave() {
-    if (!picked || !bitmapRef.current) return
+    if (!picked || !imageRef.current) return
     setSaving(true)
     setError(null)
 
-    const bitmap = bitmapRef.current
-    const side = Math.min(bitmap.width, bitmap.height)
-    const sx = (bitmap.width - side) / 2
-    const sy = (bitmap.height - side) / 2
+    const img = imageRef.current
+    const side = Math.min(img.naturalWidth, img.naturalHeight)
+    const sx = (img.naturalWidth - side) / 2
+    const sy = (img.naturalHeight - side) / 2
 
     const thumbCanvas = document.createElement('canvas')
     thumbCanvas.width = THUMBNAIL_SIZE
@@ -113,7 +135,7 @@ export default function CaptureFlow() {
       setSaving(false)
       return
     }
-    ctx.drawImage(bitmap, sx, sy, side, side, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE)
+    ctx.drawImage(img, sx, sy, side, side, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE)
     const thumbnail = thumbCanvas.toDataURL('image/jpeg', 0.6)
 
     try {
@@ -148,17 +170,24 @@ export default function CaptureFlow() {
       />
 
       {!hasPhoto && (
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="w-full py-24 text-sm tracking-widest transition-colors"
-          style={{
-            border: '1px solid #DED4BF',
-            color: '#6B5F4F',
-            background: '#F0EAD9',
-          }}
-        >
-          撮影して色をさがす
-        </button>
+        <>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full py-24 text-sm tracking-widest transition-colors"
+            style={{
+              border: '1px solid #DED4BF',
+              color: '#6B5F4F',
+              background: '#F0EAD9',
+            }}
+          >
+            撮影して色をさがす
+          </button>
+          {error && (
+            <div className="text-xs text-center" style={{ color: '#a9432f' }}>
+              {error}
+            </div>
+          )}
+        </>
       )}
 
       {hasPhoto && (
@@ -219,7 +248,7 @@ export default function CaptureFlow() {
               setHasPhoto(false)
               setPicked(null)
               setSaved(false)
-              bitmapRef.current = null
+              imageRef.current = null
               if (fileInputRef.current) fileInputRef.current.value = ''
             }}
             className="text-xs tracking-wide underline"
