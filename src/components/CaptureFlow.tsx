@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { nearestTraditionalColor, rgbToHex, type ColorMatch } from '@/lib/color-match'
 
 const DISPLAY_MAX_SIDE = 1000
@@ -13,33 +13,38 @@ type Picked = {
   yCss: number
 }
 
-function loadImage(file: File): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file)
-    const img = new window.Image()
-    img.onload = () => {
-      URL.revokeObjectURL(url)
-      resolve(img)
-    }
-    img.onerror = () => {
-      URL.revokeObjectURL(url)
-      reject(new Error('image decode failed'))
-    }
-    img.src = url
-  })
-}
+type Stage = 'idle' | 'streaming' | 'captured'
 
 export default function CaptureFlow() {
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const imageRef = useRef<HTMLImageElement | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
   const geoRef = useRef<{ latitude: number; longitude: number } | null>(null)
 
-  const [hasPhoto, setHasPhoto] = useState(false)
+  const [stage, setStage] = useState<Stage>('idle')
   const [picked, setPicked] = useState<Picked | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    return () => {
+      stopStream()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (stage === 'streaming' && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current
+      videoRef.current.play().catch(() => {})
+    }
+  }, [stage])
+
+  function stopStream() {
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    streamRef.current = null
+    if (videoRef.current) videoRef.current.srcObject = null
+  }
 
   function requestLocation() {
     if (!('geolocation' in navigator)) return
@@ -54,35 +59,48 @@ export default function CaptureFlow() {
     )
   }
 
-  async function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  async function startCamera() {
     setError(null)
     setPicked(null)
     setSaved(false)
     requestLocation()
 
-    try {
-      const img = await loadImage(file)
-      imageRef.current = img
-
-      const scale = Math.min(1, DISPLAY_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight))
-      const w = Math.round(img.naturalWidth * scale)
-      const h = Math.round(img.naturalHeight * scale)
-
-      const canvas = canvasRef.current
-      if (!canvas) return
-      canvas.width = w
-      canvas.height = h
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-      ctx.drawImage(img, 0, 0, w, h)
-      setHasPhoto(true)
-    } catch {
-      setError('写真の読み込みに失敗しました。もう一度お試しください。')
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = ''
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError('このブラウザはカメラ機能に対応していません。')
+      return
     }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      })
+      streamRef.current = stream
+      setStage('streaming')
+    } catch {
+      setError('カメラを起動できませんでした。カメラへのアクセスを許可してください。')
+    }
+  }
+
+  function capturePhoto() {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    if (!video || !canvas) return
+    const vw = video.videoWidth
+    const vh = video.videoHeight
+    if (!vw || !vh) return
+
+    const scale = Math.min(1, DISPLAY_MAX_SIDE / Math.max(vw, vh))
+    const w = Math.round(vw * scale)
+    const h = Math.round(vh * scale)
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(video, 0, 0, w, h)
+
+    stopStream()
+    setStage('captured')
   }
 
   function onCanvasTap(e: React.MouseEvent<HTMLCanvasElement>) {
@@ -118,14 +136,14 @@ export default function CaptureFlow() {
   }
 
   async function onSave() {
-    if (!picked || !imageRef.current) return
+    const canvas = canvasRef.current
+    if (!picked || !canvas) return
     setSaving(true)
     setError(null)
 
-    const img = imageRef.current
-    const side = Math.min(img.naturalWidth, img.naturalHeight)
-    const sx = (img.naturalWidth - side) / 2
-    const sy = (img.naturalHeight - side) / 2
+    const side = Math.min(canvas.width, canvas.height)
+    const sx = (canvas.width - side) / 2
+    const sy = (canvas.height - side) / 2
 
     const thumbCanvas = document.createElement('canvas')
     thumbCanvas.width = THUMBNAIL_SIZE
@@ -135,7 +153,7 @@ export default function CaptureFlow() {
       setSaving(false)
       return
     }
-    ctx.drawImage(img, sx, sy, side, side, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE)
+    ctx.drawImage(canvas, sx, sy, side, side, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE)
     const thumbnail = thumbCanvas.toDataURL('image/jpeg', 0.6)
 
     try {
@@ -158,21 +176,19 @@ export default function CaptureFlow() {
     }
   }
 
+  function reset() {
+    stopStream()
+    setStage('idle')
+    setPicked(null)
+    setSaved(false)
+  }
+
   return (
     <div className="mx-auto max-w-xl px-6 py-10 flex flex-col items-center gap-8">
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={onFileSelected}
-      />
-
-      {!hasPhoto && (
+      {stage === 'idle' && (
         <>
           <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={startCamera}
             className="w-full py-24 text-sm tracking-widest transition-colors"
             style={{
               border: '1px solid #DED4BF',
@@ -190,7 +206,40 @@ export default function CaptureFlow() {
         </>
       )}
 
-      {hasPhoto && (
+      {stage === 'streaming' && (
+        <>
+          <p className="text-xs tracking-widest" style={{ color: '#6B5F4F' }}>
+            色を見つけたらシャッターを押してください
+          </p>
+          <div className="relative w-full">
+            <video
+              ref={videoRef}
+              playsInline
+              muted
+              autoPlay
+              className="w-full h-auto"
+              style={{ border: '1px solid #DED4BF' }}
+            />
+          </div>
+          <div className="flex items-center gap-6">
+            <button
+              onClick={reset}
+              className="text-xs tracking-wide underline"
+              style={{ color: '#6B5F4F' }}
+            >
+              キャンセル
+            </button>
+            <button
+              onClick={capturePhoto}
+              className="w-16 h-16 rounded-full"
+              style={{ background: '#B8714F', border: '3px solid #F7F3EC', boxShadow: '0 0 0 1px #DED4BF' }}
+              aria-label="シャッター"
+            />
+          </div>
+        </>
+      )}
+
+      {stage === 'captured' && (
         <>
           <p className="text-xs tracking-widest" style={{ color: '#6B5F4F' }}>
             気になる色をタップしてください
@@ -244,13 +293,7 @@ export default function CaptureFlow() {
           )}
 
           <button
-            onClick={() => {
-              setHasPhoto(false)
-              setPicked(null)
-              setSaved(false)
-              imageRef.current = null
-              if (fileInputRef.current) fileInputRef.current.value = ''
-            }}
+            onClick={reset}
             className="text-xs tracking-wide underline"
             style={{ color: '#6B5F4F' }}
           >
