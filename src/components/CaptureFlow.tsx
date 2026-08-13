@@ -15,7 +15,24 @@ type Picked = {
 
 type Stage = 'idle' | 'streaming' | 'captured'
 
+function loadImage(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new window.Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      resolve(img)
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('image decode failed'))
+    }
+    img.src = url
+  })
+}
+
 export default function CaptureFlow() {
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -59,6 +76,19 @@ export default function CaptureFlow() {
     )
   }
 
+  function drawToCanvas(source: CanvasImageSource, sw: number, sh: number) {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const scale = Math.min(1, DISPLAY_MAX_SIDE / Math.max(sw, sh))
+    const w = Math.round(sw * scale)
+    const h = Math.round(sh * scale)
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(source, 0, 0, w, h)
+  }
+
   async function startCamera() {
     setError(null)
     setPicked(null)
@@ -66,7 +96,9 @@ export default function CaptureFlow() {
     requestLocation()
 
     if (!navigator.mediaDevices?.getUserMedia) {
-      setError('このブラウザはカメラ機能に対応していません。')
+      // No in-page camera API available in this browser/context — fall back
+      // to the OS's native camera picker via a file input.
+      fileInputRef.current?.click()
       return
     }
 
@@ -78,27 +110,30 @@ export default function CaptureFlow() {
       streamRef.current = stream
       setStage('streaming')
     } catch {
-      setError('カメラを起動できませんでした。カメラへのアクセスを許可してください。')
+      setError('カメラへのアクセスを許可してください。')
+    }
+  }
+
+  async function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setError(null)
+
+    try {
+      const img = await loadImage(file)
+      drawToCanvas(img, img.naturalWidth, img.naturalHeight)
+      setStage('captured')
+    } catch {
+      setError('写真の読み込みに失敗しました。もう一度お試しください。')
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
   function capturePhoto() {
     const video = videoRef.current
-    const canvas = canvasRef.current
-    if (!video || !canvas) return
-    const vw = video.videoWidth
-    const vh = video.videoHeight
-    if (!vw || !vh) return
-
-    const scale = Math.min(1, DISPLAY_MAX_SIDE / Math.max(vw, vh))
-    const w = Math.round(vw * scale)
-    const h = Math.round(vh * scale)
-    canvas.width = w
-    canvas.height = h
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.drawImage(video, 0, 0, w, h)
-
+    if (!video || !video.videoWidth || !video.videoHeight) return
+    drawToCanvas(video, video.videoWidth, video.videoHeight)
     stopStream()
     setStage('captured')
   }
@@ -181,10 +216,20 @@ export default function CaptureFlow() {
     setStage('idle')
     setPicked(null)
     setSaved(false)
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   return (
     <div className="mx-auto max-w-xl px-6 py-10 flex flex-col items-center gap-8">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={onFileSelected}
+      />
+
       {stage === 'idle' && (
         <>
           <button
@@ -240,25 +285,30 @@ export default function CaptureFlow() {
       )}
 
       {stage === 'captured' && (
-        <>
-          <p className="text-xs tracking-widest" style={{ color: '#6B5F4F' }}>
-            気になる色をタップしてください
-          </p>
-          <div className="relative w-full">
-            <canvas
-              ref={canvasRef}
-              onClick={onCanvasTap}
-              className="w-full h-auto cursor-crosshair"
-              style={{ border: '1px solid #DED4BF' }}
-            />
-            {picked && (
-              <div
-                className="absolute w-5 h-5 rounded-full pointer-events-none -translate-x-1/2 -translate-y-1/2"
-                style={{ left: picked.xCss, top: picked.yCss, border: '2px solid #F7F3EC', boxShadow: '0 0 0 1px #33291F' }}
-              />
-            )}
-          </div>
+        <p className="text-xs tracking-widest" style={{ color: '#6B5F4F' }}>
+          気になる色をタップしてください
+        </p>
+      )}
 
+      {/* Always mounted so the ref is available the instant capturePhoto()/onFileSelected() run,
+          regardless of which stage triggered the draw. Visibility is toggled via CSS only. */}
+      <div className="relative w-full" style={{ display: stage === 'captured' ? 'block' : 'none' }}>
+        <canvas
+          ref={canvasRef}
+          onClick={onCanvasTap}
+          className="w-full h-auto cursor-crosshair"
+          style={{ border: '1px solid #DED4BF' }}
+        />
+        {picked && (
+          <div
+            className="absolute w-5 h-5 rounded-full pointer-events-none -translate-x-1/2 -translate-y-1/2"
+            style={{ left: picked.xCss, top: picked.yCss, border: '2px solid #F7F3EC', boxShadow: '0 0 0 1px #33291F' }}
+          />
+        )}
+      </div>
+
+      {stage === 'captured' && (
+        <>
           {picked && (
             <div className="w-full flex flex-col items-center gap-4 py-6" style={{ borderTop: '1px solid #DED4BF' }}>
               <div className="w-16 h-16 rounded-full" style={{ background: picked.match.hex, border: '1px solid #DED4BF' }} />
