@@ -1,14 +1,7 @@
 import type { Metadata, Viewport } from 'next'
-import { Zen_Kaku_Gothic_New } from 'next/font/google'
 import Link from 'next/link'
 import ServiceWorkerRegister from '@/components/ServiceWorkerRegister'
 import './globals.css'
-
-const zenKaku = Zen_Kaku_Gothic_New({
-  subsets: ['latin'],
-  weight: ['400', '500', '700'],
-  variable: '--font-zen-kaku',
-})
 
 export const metadata: Metadata = {
   title: '色集め',
@@ -27,7 +20,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ja" className={`h-full ${zenKaku.variable}`} style={{ backgroundColor: '#F7F3EC' }}>
+    <html lang="ja" className="h-full" style={{ backgroundColor: '#F7F3EC' }}>
       <body
         className="min-h-full flex flex-col"
         style={{ backgroundColor: '#F7F3EC', color: '#33291F', fontFamily: 'var(--font-heading)' }}

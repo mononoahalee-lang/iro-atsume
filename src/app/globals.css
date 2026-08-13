@@ -20,7 +20,8 @@
   --color-clay-soft: var(--color-clay-soft);
   --color-sage: var(--color-sage);
   --color-line: var(--color-line);
-  --font-heading: var(--font-zen-kaku);
+  --font-heading: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic",
+    Meiryo, sans-serif;
 }
 
 body {
