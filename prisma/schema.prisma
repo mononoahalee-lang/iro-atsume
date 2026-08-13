@@ -1,0 +1,24 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model CollectedColor {
+  id             String   @id @default(cuid())
+  sampledHex     String // 実際にタップした点から採取した色
+  matchedName    String // 照合した伝統色名（例: "蘇芳"）
+  matchedReading String // ローマ字読み（例: "suoh"）
+  matchedHex     String // 伝統色の正式なHEX
+  distance       Float // マッチ距離（近さの参考値）
+  thumbnail      String   @db.Text // 圧縮JPEGのbase64データURL
+  latitude       Float?
+  longitude      Float?
+  capturedAt     DateTime @default(now())
+
+  @@index([capturedAt(sort: Desc)])
+  @@index([matchedName])
+}
