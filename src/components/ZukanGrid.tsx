@@ -73,8 +73,9 @@ export default function ZukanGrid({
               <div className="text-xs" style={{ color: '#6B5F4F' }}>
                 {c.matchedReading}
               </div>
-              <div className="text-xs" style={{ color: '#9C8F7A' }}>
-                {new Date(c.capturedAt).toLocaleDateString('ja-JP', { dateStyle: 'medium' })}
+              <div className="text-xs flex items-center gap-1" style={{ color: '#9C8F7A' }}>
+                <span>{new Date(c.capturedAt).toLocaleDateString('ja-JP', { dateStyle: 'medium' })}</span>
+                {(c.locationName || (c.latitude != null && c.longitude != null)) && <span>📍</span>}
               </div>
             </div>
           </button>

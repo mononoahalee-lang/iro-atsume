@@ -36,7 +36,9 @@ export default function CaptureFlow() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const geoRef = useRef<{ latitude: number; longitude: number } | null>(null)
+  const geoPromiseRef = useRef<Promise<{ latitude: number; longitude: number } | null>>(
+    Promise.resolve(null)
+  )
 
   const [stage, setStage] = useState<Stage>('idle')
   const [picked, setPicked] = useState<Picked | null>(null)
@@ -64,16 +66,17 @@ export default function CaptureFlow() {
   }
 
   function requestLocation() {
-    if (!('geolocation' in navigator)) return
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        geoRef.current = { latitude: pos.coords.latitude, longitude: pos.coords.longitude }
-      },
-      () => {
-        geoRef.current = null
-      },
-      { timeout: 5000 }
-    )
+    if (!('geolocation' in navigator)) {
+      geoPromiseRef.current = Promise.resolve(null)
+      return
+    }
+    geoPromiseRef.current = new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+        () => resolve(null),
+        { timeout: 8000 }
+      )
+    })
   }
 
   function drawToCanvas(source: CanvasImageSource, sw: number, sh: number) {
@@ -190,6 +193,7 @@ export default function CaptureFlow() {
     }
     ctx.drawImage(canvas, sx, sy, side, side, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE)
     const thumbnail = thumbCanvas.toDataURL('image/jpeg', 0.6)
+    const geo = await geoPromiseRef.current
 
     try {
       const res = await fetch('/api/colors', {
@@ -198,8 +202,8 @@ export default function CaptureFlow() {
         body: JSON.stringify({
           sampledHex: picked.hex,
           thumbnail,
-          latitude: geoRef.current?.latitude ?? null,
-          longitude: geoRef.current?.longitude ?? null,
+          latitude: geo?.latitude ?? null,
+          longitude: geo?.longitude ?? null,
         }),
       })
       if (!res.ok) throw new Error('save failed')
