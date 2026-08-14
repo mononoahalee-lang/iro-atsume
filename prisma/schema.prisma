@@ -17,6 +17,7 @@ model CollectedColor {
   thumbnail      String   @db.Text // 圧縮JPEGのbase64データURL
   latitude       Float?
   longitude      Float?
+  locationName   String? // 逆ジオコーディングで得た地名（取得できた場合のみ）
   capturedAt     DateTime @default(now())
 
   @@index([capturedAt(sort: Desc)])

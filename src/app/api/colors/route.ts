@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { nearestTraditionalColor } from '@/lib/color-match'
+import { reverseGeocode } from '@/lib/reverse-geocode'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -24,6 +25,7 @@ export async function GET() {
       thumbnail: c.thumbnail,
       latitude: c.latitude,
       longitude: c.longitude,
+      locationName: c.locationName,
       capturedAt: c.capturedAt.toISOString(),
     }))
   )
@@ -45,6 +47,9 @@ export async function POST(req: NextRequest) {
 
   const match = nearestTraditionalColor(sampledHex)
 
+  const hasLocation = typeof latitude === 'number' && typeof longitude === 'number'
+  const locationName = hasLocation ? await reverseGeocode(latitude, longitude) : null
+
   const created = await prisma.collectedColor.create({
     data: {
       sampledHex,
@@ -53,8 +58,9 @@ export async function POST(req: NextRequest) {
       matchedHex: match.hex,
       distance: match.distance,
       thumbnail,
-      latitude: typeof latitude === 'number' ? latitude : null,
-      longitude: typeof longitude === 'number' ? longitude : null,
+      latitude: hasLocation ? latitude : null,
+      longitude: hasLocation ? longitude : null,
+      locationName,
     },
   })
 
@@ -68,6 +74,7 @@ export async function POST(req: NextRequest) {
     thumbnail: created.thumbnail,
     latitude: created.latitude,
     longitude: created.longitude,
+    locationName: created.locationName,
     capturedAt: created.capturedAt.toISOString(),
   })
 }

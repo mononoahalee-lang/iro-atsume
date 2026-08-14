@@ -20,6 +20,7 @@ export default async function ZukanPage() {
         thumbnail: c.thumbnail,
         latitude: c.latitude,
         longitude: c.longitude,
+        locationName: c.locationName,
         capturedAt: c.capturedAt.toISOString(),
       }))}
       totalTraditional={TRADITIONAL_COLORS.length}
