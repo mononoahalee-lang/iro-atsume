@@ -14,6 +14,17 @@ type Picked = {
 }
 
 type Stage = 'idle' | 'streaming' | 'captured'
+type GeoStatus = 'idle' | 'pending' | 'granted' | 'denied' | 'unavailable' | 'timeout' | 'unsupported'
+
+const GEO_STATUS_LABEL: Record<GeoStatus, string | null> = {
+  idle: null,
+  pending: '📍 位置情報を取得中…',
+  granted: '📍 位置情報を記録しました',
+  denied: '📍 位置情報の権限が許可されていません(端末の設定をご確認ください)',
+  unavailable: '📍 位置情報を取得できませんでした',
+  timeout: '📍 位置情報の取得がタイムアウトしました',
+  unsupported: null,
+}
 
 function loadImage(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -42,6 +53,7 @@ export default function CaptureFlow() {
   )
 
   const [stage, setStage] = useState<Stage>('idle')
+  const [geoStatus, setGeoStatus] = useState<GeoStatus>('idle')
   const [picked, setPicked] = useState<Picked | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -68,14 +80,28 @@ export default function CaptureFlow() {
 
   function requestLocation() {
     if (!('geolocation' in navigator)) {
+      setGeoStatus('unsupported')
       geoPromiseRef.current = Promise.resolve(null)
       return
     }
+    setGeoStatus('pending')
     geoPromiseRef.current = new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-        () => resolve(null),
-        { timeout: 8000 }
+        (pos) => {
+          setGeoStatus('granted')
+          resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude })
+        },
+        (err) => {
+          setGeoStatus(
+            err.code === err.PERMISSION_DENIED
+              ? 'denied'
+              : err.code === err.TIMEOUT
+                ? 'timeout'
+                : 'unavailable'
+          )
+          resolve(null)
+        },
+        { timeout: 15000, maximumAge: 60000 }
       )
     })
   }
@@ -143,6 +169,7 @@ export default function CaptureFlow() {
     if (!file) return
     // An existing photo from the library — don't tag it with the current
     // location, since that would misrepresent where the color was found.
+    setGeoStatus('idle')
     geoPromiseRef.current = Promise.resolve(null)
     await handlePickedFile(file)
     if (albumInputRef.current) albumInputRef.current.value = ''
@@ -353,6 +380,11 @@ export default function CaptureFlow() {
                   {picked.match.reading} · {picked.match.hex}
                 </div>
               </div>
+              {GEO_STATUS_LABEL[geoStatus] && (
+                <div className="text-xs" style={{ color: geoStatus === 'granted' ? '#7C7A5E' : '#9C8F7A' }}>
+                  {GEO_STATUS_LABEL[geoStatus]}
+                </div>
+              )}
               {saved ? (
                 <div className="text-xs tracking-widest" style={{ color: '#7C7A5E' }}>
                   図鑑に追加しました
