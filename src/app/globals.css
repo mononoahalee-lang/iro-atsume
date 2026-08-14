@@ -24,9 +24,25 @@
     Meiryo, sans-serif;
 }
 
+html {
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   background: var(--color-paper);
   color: var(--color-ink);
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+/* App-like chrome: buttons/nav/links aren't selectable like ordinary web text. */
+button,
+a,
+nav {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* Thin hairline rule between sections */

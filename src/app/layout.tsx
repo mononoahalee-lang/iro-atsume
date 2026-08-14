@@ -16,6 +16,11 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: '#F7F3EC',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -27,7 +32,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       >
         <header
           className="sticky top-0 z-50 border-b"
-          style={{ backgroundColor: 'rgba(247,243,236,0.92)', borderColor: '#DED4BF' }}
+          style={{
+            backgroundColor: 'rgba(247,243,236,0.92)',
+            borderColor: '#DED4BF',
+            paddingTop: 'env(safe-area-inset-top)',
+          }}
         >
           <div className="mx-auto flex max-w-2xl items-center justify-between px-6 py-5">
             <Link href="/" className="flex items-center gap-2">
@@ -49,7 +58,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </header>
         <ServiceWorkerRegister />
-        <main className="flex-1">{children}</main>
+        <main className="flex-1" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          {children}
+        </main>
       </body>
     </html>
   )
