@@ -9,11 +9,14 @@ type Color = {
   matchedName: string
   matchedReading: string
   matchedHex: string
-  thumbnail: string
   latitude: number | null
   longitude: number | null
   locationName: string | null
   capturedAt: string
+}
+
+function thumbnailUrl(id: string) {
+  return `/api/colors/${id}/thumbnail`
 }
 
 const TRIVIA_BY_NAME = new Map(TRADITIONAL_COLORS.map((c) => [c.name, c.trivia]))
@@ -62,7 +65,12 @@ export default function ZukanGrid({
             className="flex flex-col gap-2 text-left"
           >
             <div className="relative">
-              <img src={c.thumbnail} alt={c.matchedName} className="w-full aspect-square object-cover" />
+              <img
+                src={thumbnailUrl(c.id)}
+                alt={c.matchedName}
+                loading="lazy"
+                className="w-full aspect-square object-cover"
+              />
               <div
                 className="absolute bottom-2 right-2 w-5 h-5 rounded-full"
                 style={{ background: c.matchedHex, border: '1px solid #F7F3EC' }}
@@ -94,7 +102,7 @@ export default function ZukanGrid({
             onClick={(e) => e.stopPropagation()}
           >
             <img
-              src={selected.thumbnail}
+              src={thumbnailUrl(selected.id)}
               alt={selected.matchedName}
               className="w-full aspect-square object-cover"
             />

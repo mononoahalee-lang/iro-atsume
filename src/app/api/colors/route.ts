@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { nearestTraditionalColor } from '@/lib/color-match'
 import { reverseGeocode } from '@/lib/reverse-geocode'
@@ -12,20 +12,23 @@ const MAX_THUMBNAIL_LENGTH = 200_000
 export async function GET() {
   const colors = await prisma.collectedColor.findMany({
     orderBy: { capturedAt: 'desc' },
+    select: {
+      id: true,
+      sampledHex: true,
+      matchedName: true,
+      matchedReading: true,
+      matchedHex: true,
+      distance: true,
+      latitude: true,
+      longitude: true,
+      locationName: true,
+      capturedAt: true,
+    },
   })
 
   return NextResponse.json(
     colors.map((c) => ({
-      id: c.id,
-      sampledHex: c.sampledHex,
-      matchedName: c.matchedName,
-      matchedReading: c.matchedReading,
-      matchedHex: c.matchedHex,
-      distance: c.distance,
-      thumbnail: c.thumbnail,
-      latitude: c.latitude,
-      longitude: c.longitude,
-      locationName: c.locationName,
+      ...c,
       capturedAt: c.capturedAt.toISOString(),
     }))
   )
@@ -48,7 +51,6 @@ export async function POST(req: NextRequest) {
   const match = nearestTraditionalColor(sampledHex)
 
   const hasLocation = typeof latitude === 'number' && typeof longitude === 'number'
-  const locationName = hasLocation ? await reverseGeocode(latitude, longitude) : null
 
   const created = await prisma.collectedColor.create({
     data: {
@@ -60,9 +62,20 @@ export async function POST(req: NextRequest) {
       thumbnail,
       latitude: hasLocation ? latitude : null,
       longitude: hasLocation ? longitude : null,
-      locationName,
+      locationName: null,
     },
   })
+
+  // Reverse geocoding is a slow external call — don't make the user wait on it.
+  // Fill in the place name in the background after the response is sent.
+  if (hasLocation) {
+    after(async () => {
+      const locationName = await reverseGeocode(latitude, longitude)
+      if (locationName) {
+        await prisma.collectedColor.update({ where: { id: created.id }, data: { locationName } })
+      }
+    })
+  }
 
   return NextResponse.json({
     id: created.id,
@@ -71,7 +84,6 @@ export async function POST(req: NextRequest) {
     matchedReading: created.matchedReading,
     matchedHex: created.matchedHex,
     distance: created.distance,
-    thumbnail: created.thumbnail,
     latitude: created.latitude,
     longitude: created.longitude,
     locationName: created.locationName,

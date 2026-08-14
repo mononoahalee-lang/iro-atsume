@@ -7,6 +7,17 @@ export const dynamic = 'force-dynamic'
 export default async function ZukanPage() {
   const colors = await prisma.collectedColor.findMany({
     orderBy: { capturedAt: 'desc' },
+    select: {
+      id: true,
+      sampledHex: true,
+      matchedName: true,
+      matchedReading: true,
+      matchedHex: true,
+      latitude: true,
+      longitude: true,
+      locationName: true,
+      capturedAt: true,
+    },
   })
 
   return (
@@ -17,7 +28,6 @@ export default async function ZukanPage() {
         matchedName: c.matchedName,
         matchedReading: c.matchedReading,
         matchedHex: c.matchedHex,
-        thumbnail: c.thumbnail,
         latitude: c.latitude,
         longitude: c.longitude,
         locationName: c.locationName,
