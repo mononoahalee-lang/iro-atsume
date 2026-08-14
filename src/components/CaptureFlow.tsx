@@ -33,6 +33,7 @@ function loadImage(file: File): Promise<HTMLImageElement> {
 
 export default function CaptureFlow() {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const albumInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -117,20 +118,34 @@ export default function CaptureFlow() {
     }
   }
 
-  async function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  async function handlePickedFile(file: File) {
     setError(null)
-
     try {
       const img = await loadImage(file)
       drawToCanvas(img, img.naturalWidth, img.naturalHeight)
       setStage('captured')
     } catch {
       setError('写真の読み込みに失敗しました。もう一度お試しください。')
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = ''
     }
+  }
+
+  async function onCameraFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    // A freshly-taken photo — "now" and "where it was found" are the same moment.
+    requestLocation()
+    await handlePickedFile(file)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  async function onAlbumFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    // An existing photo from the library — don't tag it with the current
+    // location, since that would misrepresent where the color was found.
+    geoPromiseRef.current = Promise.resolve(null)
+    await handlePickedFile(file)
+    if (albumInputRef.current) albumInputRef.current.value = ''
   }
 
   function capturePhoto() {
@@ -231,7 +246,14 @@ export default function CaptureFlow() {
         accept="image/*"
         capture="environment"
         className="hidden"
-        onChange={onFileSelected}
+        onChange={onCameraFileSelected}
+      />
+      <input
+        ref={albumInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={onAlbumFileSelected}
       />
 
       {stage === 'idle' && (
@@ -246,6 +268,13 @@ export default function CaptureFlow() {
             }}
           >
             撮影して色をさがす
+          </button>
+          <button
+            onClick={() => albumInputRef.current?.click()}
+            className="text-xs tracking-widest underline"
+            style={{ color: '#6B5F4F' }}
+          >
+            アルバムから選ぶ
           </button>
           {error && (
             <div className="text-xs text-center" style={{ color: '#a9432f' }}>
