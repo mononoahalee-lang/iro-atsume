@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { nearestTraditionalColor, rgbToHex, type ColorMatch } from '@/lib/color-match'
+import { GENRES } from '@/lib/genres'
 
 const DISPLAY_MAX_SIDE = 1000
 const THUMBNAIL_SIZE = 240
@@ -48,13 +49,15 @@ export default function CaptureFlow() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const geoPromiseRef = useRef<Promise<{ latitude: number; longitude: number } | null>>(
-    Promise.resolve(null)
-  )
+  const geoPromiseRef = useRef<
+    Promise<{ latitude: number; longitude: number; altitude: number | null } | null>
+  >(Promise.resolve(null))
 
   const [stage, setStage] = useState<Stage>('idle')
   const [geoStatus, setGeoStatus] = useState<GeoStatus>('idle')
   const [picked, setPicked] = useState<Picked | null>(null)
+  const [note, setNote] = useState('')
+  const [genre, setGenre] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -89,7 +92,11 @@ export default function CaptureFlow() {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           setGeoStatus('granted')
-          resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude })
+          resolve({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            altitude: pos.coords.altitude,
+          })
         },
         (err) => {
           setGeoStatus(
@@ -213,6 +220,8 @@ export default function CaptureFlow() {
 
     setPicked({ hex, match, xCss: e.clientX - rect.left, yCss: e.clientY - rect.top })
     setSaved(false)
+    setNote('')
+    setGenre(null)
   }
 
   async function onSave() {
@@ -246,6 +255,9 @@ export default function CaptureFlow() {
           thumbnail,
           latitude: geo?.latitude ?? null,
           longitude: geo?.longitude ?? null,
+          elevation: geo?.altitude ?? null,
+          note: note.trim() || null,
+          genre,
         }),
       })
       if (!res.ok) throw new Error('save failed')
@@ -262,6 +274,8 @@ export default function CaptureFlow() {
     setStage('idle')
     setPicked(null)
     setSaved(false)
+    setNote('')
+    setGenre(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -385,6 +399,37 @@ export default function CaptureFlow() {
                   {GEO_STATUS_LABEL[geoStatus]}
                 </div>
               )}
+
+              {!saved && (
+                <div className="w-full flex flex-col gap-3">
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    {GENRES.map((g) => (
+                      <button
+                        key={g}
+                        onClick={() => setGenre(genre === g ? null : g)}
+                        className="px-3 py-1 text-xs tracking-wide"
+                        style={{
+                          border: '1px solid #DED4BF',
+                          background: genre === g ? '#B8714F' : 'transparent',
+                          color: genre === g ? '#F7F3EC' : '#6B5F4F',
+                        }}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="text"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="メモ(任意) — 例: 公園の桜"
+                    maxLength={200}
+                    className="w-full px-3 py-2 text-sm"
+                    style={{ border: '1px solid #DED4BF', background: '#FFFFFF', color: '#33291F' }}
+                  />
+                </div>
+              )}
+
               {saved ? (
                 <div className="text-xs tracking-widest" style={{ color: '#7C7A5E' }}>
                   図鑑に追加しました

@@ -16,6 +16,9 @@ export default async function ZukanPage() {
       latitude: true,
       longitude: true,
       locationName: true,
+      elevation: true,
+      note: true,
+      genre: true,
       capturedAt: true,
     },
   })
@@ -31,6 +34,9 @@ export default async function ZukanPage() {
         latitude: c.latitude,
         longitude: c.longitude,
         locationName: c.locationName,
+        elevation: c.elevation,
+        note: c.note,
+        genre: c.genre,
         capturedAt: c.capturedAt.toISOString(),
       }))}
       totalTraditional={TRADITIONAL_COLORS.length}

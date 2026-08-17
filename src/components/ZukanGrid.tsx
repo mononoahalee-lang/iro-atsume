@@ -12,6 +12,9 @@ type Color = {
   latitude: number | null
   longitude: number | null
   locationName: string | null
+  elevation: number | null
+  note: string | null
+  genre: string | null
   capturedAt: string
 }
 
@@ -83,6 +86,7 @@ export default function ZukanGrid({
               </div>
               <div className="text-xs flex items-center gap-1" style={{ color: '#9C8F7A' }}>
                 <span>{new Date(c.capturedAt).toLocaleDateString('ja-JP', { dateStyle: 'medium' })}</span>
+                {c.genre && <span>· {c.genre}</span>}
                 {(c.locationName || (c.latitude != null && c.longitude != null)) && <span>📍</span>}
               </div>
             </div>
@@ -124,13 +128,21 @@ export default function ZukanGrid({
               </p>
             )}
 
+            {selected.note && (
+              <p className="text-sm leading-relaxed" style={{ color: '#33291F', borderTop: '1px solid #DED4BF', paddingTop: '1rem' }}>
+                {selected.note}
+              </p>
+            )}
+
             <div className="flex flex-col gap-1 text-xs" style={{ color: '#6B5F4F', borderTop: '1px solid #DED4BF', paddingTop: '1rem' }}>
               <div>
                 {new Date(selected.capturedAt).toLocaleString('ja-JP', { dateStyle: 'medium', timeStyle: 'short' })}
+                {selected.genre && ` · ${selected.genre}`}
               </div>
-              {(selected.locationName || (selected.latitude != null && selected.longitude != null)) && (
-                <div className="flex items-center gap-2">
+              {(selected.locationName || (selected.latitude != null && selected.longitude != null) || selected.elevation != null) && (
+                <div className="flex items-center gap-2 flex-wrap">
                   {selected.locationName && <span>{selected.locationName}</span>}
+                  {selected.elevation != null && <span>標高 {Math.round(selected.elevation)}m</span>}
                   {selected.latitude != null && selected.longitude != null && (
                     <a
                       href={`https://www.google.com/maps?q=${selected.latitude},${selected.longitude}`}

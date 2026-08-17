@@ -18,6 +18,9 @@ model CollectedColor {
   latitude       Float?
   longitude      Float?
   locationName   String? // 逆ジオコーディングで得た地名（取得できた場合のみ）
+  elevation      Float? // 標高（メートル）。端末のGPS値、なければ地形データから取得
+  note           String? // 撮影時に付けたメモ
+  genre          String? // 撮影物のジャンル（木・土・石など、手動選択）
   capturedAt     DateTime @default(now())
 
   @@index([capturedAt(sort: Desc)])
