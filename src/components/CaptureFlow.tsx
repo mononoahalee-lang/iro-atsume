@@ -49,9 +49,9 @@ export default function CaptureFlow() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const geoPromiseRef = useRef<
-    Promise<{ latitude: number; longitude: number; altitude: number | null } | null>
-  >(Promise.resolve(null))
+  const geoPromiseRef = useRef<Promise<{ latitude: number; longitude: number } | null>>(
+    Promise.resolve(null)
+  )
 
   const [stage, setStage] = useState<Stage>('idle')
   const [geoStatus, setGeoStatus] = useState<GeoStatus>('idle')
@@ -92,11 +92,7 @@ export default function CaptureFlow() {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           setGeoStatus('granted')
-          resolve({
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-            altitude: pos.coords.altitude,
-          })
+          resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude })
         },
         (err) => {
           setGeoStatus(
@@ -255,7 +251,6 @@ export default function CaptureFlow() {
           thumbnail,
           latitude: geo?.latitude ?? null,
           longitude: geo?.longitude ?? null,
-          elevation: geo?.altitude ?? null,
           note: note.trim() || null,
           genre,
         }),

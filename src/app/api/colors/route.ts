@@ -42,7 +42,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { sampledHex, thumbnail, latitude, longitude, elevation, note, genre } = body
+  const { sampledHex, thumbnail, latitude, longitude, note, genre } = body
 
   if (typeof sampledHex !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(sampledHex)) {
     return NextResponse.json({ error: 'Invalid sampledHex' }, { status: 400 })
@@ -63,7 +63,6 @@ export async function POST(req: NextRequest) {
   const match = nearestTraditionalColor(sampledHex)
 
   const hasLocation = typeof latitude === 'number' && typeof longitude === 'number'
-  const hasElevation = typeof elevation === 'number'
 
   const created = await prisma.collectedColor.create({
     data: {
@@ -76,23 +75,28 @@ export async function POST(req: NextRequest) {
       latitude: hasLocation ? latitude : null,
       longitude: hasLocation ? longitude : null,
       locationName: null,
-      elevation: hasElevation ? elevation : null,
+      elevation: null,
       note: note || null,
       genre: genre || null,
     },
   })
 
-  // Reverse geocoding and elevation-by-terrain-data are slow external calls —
-  // don't make the user wait on them. Fill them in after the response is sent.
+  // Reverse geocoding and terrain elevation are slow external calls — don't make
+  // the user wait on them. Fill them in after the response is sent.
+  //
+  // Elevation is always looked up from terrain data (not device GPS altitude):
+  // GPS altitude is often missing or wildly inaccurate, and some devices report
+  // a bare 0 instead of null when they don't actually have a reading — terrain
+  // lookup by coordinates is the only reliable source here.
   if (hasLocation) {
     after(async () => {
-      const [locationName, fallbackElevation] = await Promise.all([
+      const [locationName, elevation] = await Promise.all([
         reverseGeocode(latitude, longitude),
-        hasElevation ? Promise.resolve(null) : lookupElevation(latitude, longitude),
+        lookupElevation(latitude, longitude),
       ])
       const data: { locationName?: string; elevation?: number } = {}
       if (locationName) data.locationName = locationName
-      if (fallbackElevation != null) data.elevation = fallbackElevation
+      if (elevation != null) data.elevation = elevation
       if (Object.keys(data).length > 0) {
         await prisma.collectedColor.update({ where: { id: created.id }, data })
       }
