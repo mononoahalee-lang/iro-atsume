@@ -12,6 +12,8 @@ type Picked = {
   match: ColorMatch
   xCss: number
   yCss: number
+  xCanvas: number
+  yCanvas: number
 }
 
 type Stage = 'idle' | 'streaming' | 'captured'
@@ -214,7 +216,14 @@ export default function CaptureFlow() {
     const hex = rgbToHex(r / count, g / count, b / count)
     const match = nearestTraditionalColor(hex)
 
-    setPicked({ hex, match, xCss: e.clientX - rect.left, yCss: e.clientY - rect.top })
+    setPicked({
+      hex,
+      match,
+      xCss: e.clientX - rect.left,
+      yCss: e.clientY - rect.top,
+      xCanvas: x,
+      yCanvas: y,
+    })
     setSaved(false)
     setNote('')
     setGenre(null)
@@ -226,9 +235,14 @@ export default function CaptureFlow() {
     setSaving(true)
     setError(null)
 
+    // Crop a square centered on the tapped point (clamped to the canvas bounds)
+    // rather than the image center, so the sampled point is always visible in
+    // the saved thumbnail — and record where within that crop it ended up.
     const side = Math.min(canvas.width, canvas.height)
-    const sx = (canvas.width - side) / 2
-    const sy = (canvas.height - side) / 2
+    const sx = Math.max(0, Math.min(canvas.width - side, picked.xCanvas - side / 2))
+    const sy = Math.max(0, Math.min(canvas.height - side, picked.yCanvas - side / 2))
+    const markerX = (picked.xCanvas - sx) / side
+    const markerY = (picked.yCanvas - sy) / side
 
     const thumbCanvas = document.createElement('canvas')
     thumbCanvas.width = THUMBNAIL_SIZE
@@ -253,6 +267,8 @@ export default function CaptureFlow() {
           longitude: geo?.longitude ?? null,
           note: note.trim() || null,
           genre,
+          markerX,
+          markerY,
         }),
       })
       if (!res.ok) throw new Error('save failed')

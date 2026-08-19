@@ -21,6 +21,8 @@ model CollectedColor {
   elevation      Float? // 標高（メートル）。端末のGPS値、なければ地形データから取得
   note           String? // 撮影時に付けたメモ
   genre          String? // 撮影物のジャンル（木・土・石など、手動選択）
+  markerX        Float? // サムネイル内で採取した色の位置（横方向、0.0〜1.0）
+  markerY        Float? // サムネイル内で採取した色の位置（縦方向、0.0〜1.0）
   capturedAt     DateTime @default(now())
 
   @@index([capturedAt(sort: Desc)])

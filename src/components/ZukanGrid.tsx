@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { TRADITIONAL_COLORS } from '@/lib/traditional-colors'
+import { GENRES } from '@/lib/genres'
 
 type Color = {
   id: string
@@ -15,11 +16,27 @@ type Color = {
   elevation: number | null
   note: string | null
   genre: string | null
+  markerX: number | null
+  markerY: number | null
   capturedAt: string
 }
 
 function thumbnailUrl(id: string) {
   return `/api/colors/${id}/thumbnail`
+}
+
+function ColorMarker({ x, y }: { x: number; y: number }) {
+  return (
+    <div
+      className="absolute w-4 h-4 rounded-full pointer-events-none -translate-x-1/2 -translate-y-1/2"
+      style={{
+        left: `${x * 100}%`,
+        top: `${y * 100}%`,
+        border: '2px solid #F7F3EC',
+        boxShadow: '0 0 0 1px #33291F',
+      }}
+    />
+  )
 }
 
 const TRIVIA_BY_NAME = new Map(TRADITIONAL_COLORS.map((c) => [c.name, c.trivia]))
@@ -33,14 +50,51 @@ export default function ZukanGrid({
 }) {
   const [colors, setColors] = useState(initialColors)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editNote, setEditNote] = useState('')
+  const [editGenre, setEditGenre] = useState<string | null>(null)
+  const [savingEdit, setSavingEdit] = useState(false)
+
   const collectedCount = useMemo(() => new Set(colors.map((c) => c.matchedName)).size, [colors])
   const progress = Math.min(1, collectedCount / totalTraditional)
   const selected = colors.find((c) => c.id === selectedId) ?? null
+
+  function openDetail(id: string) {
+    setSelectedId(id)
+    setIsEditing(false)
+  }
+
+  function startEdit(c: Color) {
+    setEditNote(c.note ?? '')
+    setEditGenre(c.genre)
+    setIsEditing(true)
+  }
 
   async function onDelete(id: string) {
     setColors((prev) => prev.filter((c) => c.id !== id))
     setSelectedId(null)
     await fetch(`/api/colors/${id}`, { method: 'DELETE' }).catch(() => {})
+  }
+
+  async function onSaveEdit() {
+    if (!selected) return
+    setSavingEdit(true)
+    try {
+      const res = await fetch(`/api/colors/${selected.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: editNote.trim() || null, genre: editGenre }),
+      })
+      if (!res.ok) throw new Error('update failed')
+      setColors((prev) =>
+        prev.map((c) => (c.id === selected.id ? { ...c, note: editNote.trim() || null, genre: editGenre } : c))
+      )
+      setIsEditing(false)
+    } catch {
+      // Leave edit mode open so the user can retry.
+    } finally {
+      setSavingEdit(false)
+    }
   }
 
   return (
@@ -64,7 +118,7 @@ export default function ZukanGrid({
         {colors.map((c) => (
           <button
             key={c.id}
-            onClick={() => setSelectedId(c.id)}
+            onClick={() => openDetail(c.id)}
             className="flex flex-col gap-2 text-left"
           >
             <div className="relative">
@@ -74,6 +128,7 @@ export default function ZukanGrid({
                 loading="lazy"
                 className="w-full aspect-square object-cover"
               />
+              {c.markerX != null && c.markerY != null && <ColorMarker x={c.markerX} y={c.markerY} />}
               <div
                 className="absolute bottom-2 right-2 w-5 h-5 rounded-full"
                 style={{ background: c.matchedHex, border: '1px solid #F7F3EC' }}
@@ -105,11 +160,16 @@ export default function ZukanGrid({
             style={{ background: '#F7F3EC', border: '1px solid #DED4BF' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <img
-              src={thumbnailUrl(selected.id)}
-              alt={selected.matchedName}
-              className="w-full aspect-square object-cover"
-            />
+            <div className="relative">
+              <img
+                src={thumbnailUrl(selected.id)}
+                alt={selected.matchedName}
+                className="w-full aspect-square object-cover"
+              />
+              {selected.markerX != null && selected.markerY != null && (
+                <ColorMarker x={selected.markerX} y={selected.markerY} />
+              )}
+            </div>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full shrink-0" style={{ background: selected.matchedHex, border: '1px solid #DED4BF' }} />
               <div>
@@ -128,51 +188,117 @@ export default function ZukanGrid({
               </p>
             )}
 
-            {selected.note && (
+            {!isEditing && selected.note && (
               <p className="text-sm leading-relaxed" style={{ color: '#33291F', borderTop: '1px solid #DED4BF', paddingTop: '1rem' }}>
                 {selected.note}
               </p>
             )}
 
-            <div className="flex flex-col gap-1 text-xs" style={{ color: '#6B5F4F', borderTop: '1px solid #DED4BF', paddingTop: '1rem' }}>
-              <div>
-                {new Date(selected.capturedAt).toLocaleString('ja-JP', { dateStyle: 'medium', timeStyle: 'short' })}
-                {selected.genre && ` · ${selected.genre}`}
-              </div>
-              {(selected.locationName || (selected.latitude != null && selected.longitude != null) || selected.elevation != null) && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  {selected.locationName && <span>{selected.locationName}</span>}
-                  {selected.elevation != null && <span>標高 {Math.round(selected.elevation)}m</span>}
-                  {selected.latitude != null && selected.longitude != null && (
-                    <a
-                      href={`https://www.google.com/maps?q=${selected.latitude},${selected.longitude}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline"
-                      style={{ color: '#7C7A5E' }}
-                    >
-                      地図で見る
-                    </a>
-                  )}
+            {!isEditing && (
+              <div className="flex flex-col gap-1 text-xs" style={{ color: '#6B5F4F', borderTop: '1px solid #DED4BF', paddingTop: '1rem' }}>
+                <div>
+                  {new Date(selected.capturedAt).toLocaleString('ja-JP', { dateStyle: 'medium', timeStyle: 'short' })}
+                  {selected.genre && ` · ${selected.genre}`}
                 </div>
-              )}
-            </div>
+                {(selected.locationName || (selected.latitude != null && selected.longitude != null) || selected.elevation != null) && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {selected.locationName && <span>{selected.locationName}</span>}
+                    {selected.elevation != null && <span>標高 {Math.round(selected.elevation)}m</span>}
+                    {selected.latitude != null && selected.longitude != null && (
+                      <a
+                        href={`https://www.google.com/maps?q=${selected.latitude},${selected.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline"
+                        style={{ color: '#7C7A5E' }}
+                      >
+                        地図で見る
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isEditing && (
+              <div
+                className="w-full flex flex-col gap-3"
+                style={{ borderTop: '1px solid #DED4BF', paddingTop: '1rem' }}
+              >
+                <div className="flex flex-wrap gap-2">
+                  {GENRES.map((g) => (
+                    <button
+                      key={g}
+                      onClick={() => setEditGenre(editGenre === g ? null : g)}
+                      className="px-3 py-1 text-xs tracking-wide"
+                      style={{
+                        border: '1px solid #DED4BF',
+                        background: editGenre === g ? '#B8714F' : 'transparent',
+                        color: editGenre === g ? '#F7F3EC' : '#6B5F4F',
+                      }}
+                    >
+                      {g}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={editNote}
+                  onChange={(e) => setEditNote(e.target.value)}
+                  placeholder="メモ(任意)"
+                  maxLength={200}
+                  className="w-full px-3 py-2 text-sm"
+                  style={{ border: '1px solid #DED4BF', background: '#FFFFFF', color: '#33291F' }}
+                />
+              </div>
+            )}
 
             <div className="flex items-center justify-between mt-2">
-              <button
-                onClick={() => setSelectedId(null)}
-                className="text-xs tracking-widest underline"
-                style={{ color: '#6B5F4F' }}
-              >
-                閉じる
-              </button>
-              <button
-                onClick={() => onDelete(selected.id)}
-                className="text-xs tracking-widest underline"
-                style={{ color: '#9C8F7A' }}
-              >
-                削除
-              </button>
+              {isEditing ? (
+                <>
+                  <button
+                    onClick={() => setIsEditing(false)}
+                    className="text-xs tracking-widest underline"
+                    style={{ color: '#6B5F4F' }}
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={onSaveEdit}
+                    disabled={savingEdit}
+                    className="px-6 py-2 text-xs tracking-widest disabled:opacity-50"
+                    style={{ background: '#B8714F', color: '#F7F3EC' }}
+                  >
+                    {savingEdit ? '保存中…' : '保存'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setSelectedId(null)}
+                    className="text-xs tracking-widest underline"
+                    style={{ color: '#6B5F4F' }}
+                  >
+                    閉じる
+                  </button>
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => startEdit(selected)}
+                      className="text-xs tracking-widest underline"
+                      style={{ color: '#7C7A5E' }}
+                    >
+                      編集
+                    </button>
+                    <button
+                      onClick={() => onDelete(selected.id)}
+                      className="text-xs tracking-widest underline"
+                      style={{ color: '#9C8F7A' }}
+                    >
+                      削除
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

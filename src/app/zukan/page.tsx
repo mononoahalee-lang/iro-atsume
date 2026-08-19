@@ -19,6 +19,8 @@ export default async function ZukanPage() {
       elevation: true,
       note: true,
       genre: true,
+      markerX: true,
+      markerY: true,
       capturedAt: true,
     },
   })
@@ -37,6 +39,8 @@ export default async function ZukanPage() {
         elevation: c.elevation,
         note: c.note,
         genre: c.genre,
+        markerX: c.markerX,
+        markerY: c.markerY,
         capturedAt: c.capturedAt.toISOString(),
       }))}
       totalTraditional={TRADITIONAL_COLORS.length}

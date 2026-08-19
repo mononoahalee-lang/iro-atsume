@@ -28,6 +28,8 @@ export async function GET() {
       elevation: true,
       note: true,
       genre: true,
+      markerX: true,
+      markerY: true,
       capturedAt: true,
     },
   })
@@ -42,7 +44,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { sampledHex, thumbnail, latitude, longitude, note, genre } = body
+  const { sampledHex, thumbnail, latitude, longitude, note, genre, markerX, markerY } = body
 
   if (typeof sampledHex !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(sampledHex)) {
     return NextResponse.json({ error: 'Invalid sampledHex' }, { status: 400 })
@@ -59,6 +61,8 @@ export async function POST(req: NextRequest) {
   if (genre != null && !GENRES.includes(genre)) {
     return NextResponse.json({ error: 'Invalid genre' }, { status: 400 })
   }
+
+  const hasMarker = typeof markerX === 'number' && typeof markerY === 'number'
 
   const match = nearestTraditionalColor(sampledHex)
 
@@ -78,6 +82,8 @@ export async function POST(req: NextRequest) {
       elevation: null,
       note: note || null,
       genre: genre || null,
+      markerX: hasMarker ? markerX : null,
+      markerY: hasMarker ? markerY : null,
     },
   })
 
@@ -116,6 +122,8 @@ export async function POST(req: NextRequest) {
     elevation: created.elevation,
     note: created.note,
     genre: created.genre,
+    markerX: created.markerX,
+    markerY: created.markerY,
     capturedAt: created.capturedAt.toISOString(),
   })
 }
