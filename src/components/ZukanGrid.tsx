@@ -1,8 +1,9 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { TRADITIONAL_COLORS } from '@/lib/traditional-colors'
 import { GENRES } from '@/lib/genres'
+import { nearestTraditionalColor, rgbToHex, type ColorMatch } from '@/lib/color-match'
 
 type Color = {
   id: string
@@ -19,6 +20,13 @@ type Color = {
   markerX: number | null
   markerY: number | null
   capturedAt: string
+}
+
+type Repick = {
+  hex: string
+  match: ColorMatch
+  xRel: number
+  yRel: number
 }
 
 function thumbnailUrl(id: string) {
@@ -53,20 +61,45 @@ export default function ZukanGrid({
   const [isEditing, setIsEditing] = useState(false)
   const [editNote, setEditNote] = useState('')
   const [editGenre, setEditGenre] = useState<string | null>(null)
+  const [repick, setRepick] = useState<Repick | null>(null)
   const [savingEdit, setSavingEdit] = useState(false)
+  const repickCanvasRef = useRef<HTMLCanvasElement>(null)
 
   const collectedCount = useMemo(() => new Set(colors.map((c) => c.matchedName)).size, [colors])
   const progress = Math.min(1, collectedCount / totalTraditional)
   const selected = colors.find((c) => c.id === selectedId) ?? null
 
+  // Load the saved thumbnail into the (always-mounted, initially hidden) canvas
+  // whenever a different entry is opened, so it's ready to sample from the
+  // instant edit mode is entered.
+  useEffect(() => {
+    if (!selectedId) return
+    const canvas = repickCanvasRef.current
+    if (!canvas) return
+    let cancelled = false
+    const img = new window.Image()
+    img.onload = () => {
+      if (cancelled) return
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      canvas.getContext('2d')?.drawImage(img, 0, 0)
+    }
+    img.src = thumbnailUrl(selectedId)
+    return () => {
+      cancelled = true
+    }
+  }, [selectedId])
+
   function openDetail(id: string) {
     setSelectedId(id)
     setIsEditing(false)
+    setRepick(null)
   }
 
   function startEdit(c: Color) {
     setEditNote(c.note ?? '')
     setEditGenre(c.genre)
+    setRepick(null)
     setIsEditing(true)
   }
 
@@ -76,6 +109,35 @@ export default function ZukanGrid({
     await fetch(`/api/colors/${id}`, { method: 'DELETE' }).catch(() => {})
   }
 
+  function onRepickTap(e: React.MouseEvent<HTMLCanvasElement>) {
+    const canvas = repickCanvasRef.current
+    if (!canvas || !canvas.width) return
+    const rect = canvas.getBoundingClientRect()
+    const ratioX = canvas.width / rect.width
+    const ratioY = canvas.height / rect.height
+    const x = Math.round((e.clientX - rect.left) * ratioX)
+    const y = Math.round((e.clientY - rect.top) * ratioY)
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const sampleSize = 3
+    const half = Math.floor(sampleSize / 2)
+    const sx = Math.max(0, Math.min(canvas.width - sampleSize, x - half))
+    const sy = Math.max(0, Math.min(canvas.height - sampleSize, y - half))
+    const data = ctx.getImageData(sx, sy, sampleSize, sampleSize).data
+
+    let r = 0, g = 0, b = 0
+    const count = data.length / 4
+    for (let i = 0; i < data.length; i += 4) {
+      r += data[i]
+      g += data[i + 1]
+      b += data[i + 2]
+    }
+    const hex = rgbToHex(r / count, g / count, b / count)
+    const match = nearestTraditionalColor(hex)
+    setRepick({ hex, match, xRel: x / canvas.width, yRel: y / canvas.height })
+  }
+
   async function onSaveEdit() {
     if (!selected) return
     setSavingEdit(true)
@@ -83,13 +145,37 @@ export default function ZukanGrid({
       const res = await fetch(`/api/colors/${selected.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note: editNote.trim() || null, genre: editGenre }),
+        body: JSON.stringify({
+          note: editNote.trim() || null,
+          genre: editGenre,
+          ...(repick ? { sampledHex: repick.hex, markerX: repick.xRel, markerY: repick.yRel } : {}),
+        }),
       })
       if (!res.ok) throw new Error('update failed')
+      const updated = await res.json()
       setColors((prev) =>
-        prev.map((c) => (c.id === selected.id ? { ...c, note: editNote.trim() || null, genre: editGenre } : c))
+        prev.map((c) =>
+          c.id === selected.id
+            ? {
+                ...c,
+                note: editNote.trim() || null,
+                genre: editGenre,
+                ...(repick
+                  ? {
+                      sampledHex: updated.sampledHex,
+                      matchedName: updated.matchedName,
+                      matchedReading: updated.matchedReading,
+                      matchedHex: updated.matchedHex,
+                      markerX: updated.markerX,
+                      markerY: updated.markerY,
+                    }
+                  : {}),
+              }
+            : c
+        )
       )
       setIsEditing(false)
+      setRepick(null)
     } catch {
       // Leave edit mode open so the user can retry.
     } finally {
@@ -160,29 +246,58 @@ export default function ZukanGrid({
             style={{ background: '#F7F3EC', border: '1px solid #DED4BF' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="relative">
-              <img
-                src={thumbnailUrl(selected.id)}
-                alt={selected.matchedName}
-                className="w-full aspect-square object-cover"
+            {!isEditing && (
+              <div className="relative">
+                <img
+                  src={thumbnailUrl(selected.id)}
+                  alt={selected.matchedName}
+                  className="w-full aspect-square object-cover"
+                />
+                {selected.markerX != null && selected.markerY != null && (
+                  <ColorMarker x={selected.markerX} y={selected.markerY} />
+                )}
+              </div>
+            )}
+
+            {/* Always mounted (see the loading effect above) so it's pre-drawn the
+                moment edit mode opens; hidden via CSS rather than unmounted. */}
+            <div className="relative" style={{ display: isEditing ? 'block' : 'none' }}>
+              <canvas
+                ref={repickCanvasRef}
+                onClick={onRepickTap}
+                className="w-full h-auto cursor-crosshair"
+                style={{ border: '1px solid #DED4BF' }}
               />
-              {selected.markerX != null && selected.markerY != null && (
-                <ColorMarker x={selected.markerX} y={selected.markerY} />
+              {repick ? (
+                <ColorMarker x={repick.xRel} y={repick.yRel} />
+              ) : (
+                selected.markerX != null &&
+                selected.markerY != null && <ColorMarker x={selected.markerX} y={selected.markerY} />
               )}
             </div>
+            {isEditing && (
+              <p className="text-xs tracking-wide text-center" style={{ color: '#9C8F7A' }}>
+                写真をタップすると採取する色を変更できます
+              </p>
+            )}
+
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full shrink-0" style={{ background: selected.matchedHex, border: '1px solid #DED4BF' }} />
+              <div
+                className="w-10 h-10 rounded-full shrink-0"
+                style={{ background: repick ? repick.match.hex : selected.matchedHex, border: '1px solid #DED4BF' }}
+              />
               <div>
                 <div className="text-xl tracking-wide" style={{ color: '#33291F' }}>
-                  {selected.matchedName}
+                  {repick ? repick.match.name : selected.matchedName}
                 </div>
                 <div className="text-xs tracking-wide" style={{ color: '#6B5F4F' }}>
-                  {selected.matchedReading} · {selected.matchedHex}
+                  {repick ? repick.match.reading : selected.matchedReading} ·{' '}
+                  {repick ? repick.match.hex : selected.matchedHex}
                 </div>
               </div>
             </div>
 
-            {TRIVIA_BY_NAME.get(selected.matchedName) && (
+            {!isEditing && TRIVIA_BY_NAME.get(selected.matchedName) && (
               <p className="text-sm leading-relaxed" style={{ color: '#33291F', borderTop: '1px solid #DED4BF', paddingTop: '1rem' }}>
                 {TRIVIA_BY_NAME.get(selected.matchedName)}
               </p>
@@ -257,7 +372,10 @@ export default function ZukanGrid({
               {isEditing ? (
                 <>
                   <button
-                    onClick={() => setIsEditing(false)}
+                    onClick={() => {
+                      setIsEditing(false)
+                      setRepick(null)
+                    }}
                     className="text-xs tracking-widest underline"
                     style={{ color: '#6B5F4F' }}
                   >
