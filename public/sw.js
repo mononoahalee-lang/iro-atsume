@@ -1,4 +1,4 @@
-const CACHE_NAME = 'iro-atsume-v1'
+const CACHE_NAME = 'iro-atsume-v2'
 const STATIC_ASSETS = [
   '/manifest.json',
 ]
